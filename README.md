@@ -1,22 +1,8 @@
 🧠 Deep Learning Workflow: Image Classification & Anomaly Detection
 
 Welcome! This repository contains an end-to-end deep learning pipeline built using Python and TensorFlow in Google Colab. It covers everything from data preprocessing, visualization, and augmentation to model training using CNNs and anomaly detection using Variational Autoencoders (VAE).
-📁 Dataset Structure
 
-Your dataset is expected to be organized like this:
 
-/dl
-├── data.yaml
-├── train
-│   ├── images/
-│   └── labels/
-├── valid/
-│   └── ...
-├── test/
-│   └── ...
-
-The labels follow YOLO format, and a data.yaml file provides class names and count.
-🚀 Features Covered
 ✅ Dataset Loading & Visualization
 
     Mount Google Drive and load images/labels
