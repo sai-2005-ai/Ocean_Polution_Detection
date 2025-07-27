@@ -1,0 +1,539 @@
+from google.colab import drive
+drive.mount('/content/drive')
+import os
+
+
+extract_path = "/content/drive/MyDrive/dl"  # Change if extracted to a different folder
+# List extracted files
+files = os.listdir(extract_path)
+print("Extracted files:", files)
+
+import os
+import glob
+import cv2
+import yaml
+import random
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from IPython.display import display
+from PIL import Image
+# Define dataset paths
+base_path = "/content/drive/MyDrive/dl"
+train_images_path = os.path.join(base_path, "train", "images")
+train_labels_path = os.path.join(base_path, "train", "labels")
+
+# Check available images and labels
+image_files = glob.glob(train_images_path + "/*.jpg")  # Change to *.png if needed
+label_files = glob.glob(train_labels_path + "/*.txt")
+print(f"Found {len(image_files)} images and {len(label_files)} label files.")
+
+
+def show_sample_images(num_samples=5):
+    sample_files = random.sample(image_files, num_samples)
+    plt.figure(figsize=(15, 5))
+    for i, img_path in enumerate(sample_files):
+        img = Image.open(img_path)
+        plt.subplot(1, num_samples, i+1)
+        plt.imshow(img)
+        plt.axis("off")
+        plt.title(os.path.basename(img_path))
+
+    plt.show()
+# Show images
+show_sample_images()
+
+
+# Load class names from data.yaml
+yaml_path = os.path.join(base_path, "data.yaml")
+with open(yaml_path, "r") as file:
+    data_yaml = yaml.safe_load(file)
+
+class_names = data_yaml["names"]
+num_classes = data_yaml["nc"]
+print(f"Dataset has {num_classes} classes:\n", class_names)
+
+
+# Count instances of each class in training labels
+class_counts = {i: 0 for i in range(num_classes)}
+
+for label_file in label_files:
+    with open(label_file, "r") as file:
+        for line in file:
+            class_id = int(line.split()[0])  # First value is the class ID
+            class_counts[class_id] += 1
+
+# Convert to DataFrame for plotting
+class_df = pd.DataFrame(list(class_counts.items()), columns=["Class ID", "Count"])
+class_df["Class Name"] = class_df["Class ID"].map(lambda x: class_names[x])
+
+# Plot
+plt.figure(figsize=(12, 5))
+sns.barplot(x="Class Name", y="Count", data=class_df, palette="viridis")
+plt.xticks(rotation=45)
+plt.title("Class Distribution in Training Set")
+plt.show()
+
+
+def draw_bboxes(image_path, label_path):
+    # Read image
+    img = cv2.imread(image_path)
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    h, w, _ = img.shape
+
+    # Read label file
+    with open(label_path, "r") as file:
+        lines = file.readlines()
+
+    for line in lines:
+        parts = line.strip().split()
+        class_id = int(parts[0])
+        x_center, y_center, width, height = map(float, parts[1:])
+
+        # Convert YOLO format to pixels
+        x1 = int((x_center - width / 2) * w)
+        y1 = int((y_center - height / 2) * h)
+        x2 = int((x_center + width / 2) * w)
+        y2 = int((y_center + height / 2) * h)
+
+        # Draw bounding box
+        color = (255, 0, 0)  # Red
+        cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
+        cv2.putText(img, class_names[class_id], (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+
+    # Show image
+    plt.figure(figsize=(6, 6))
+    plt.imshow(img)
+    plt.axis("off")
+    plt.show()
+
+# Test on a random image
+sample_image = random.choice(image_files)
+sample_label = sample_image.replace("images", "labels").replace(".jpg", ".txt")
+
+if os.path.exists(sample_label):
+    draw_bboxes(sample_image, sample_label)
+else:
+    print("No label file found for this image.")
+
+
+def preprocess_images(image_path, target_size=(416, 416)):
+    img = cv2.imread(image_path)
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    img = cv2.resize(img, target_size)
+    img = img / 255.0  # Normalize to [0,1]
+    return img
+
+# Test preprocessing
+sample_img = preprocess_images(sample_image)
+
+plt.imshow(sample_img)
+plt.axis("off")
+plt.title("Preprocessed Image (416x416)")
+plt.show()
+
+
+import tensorflow as tf
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+
+# Define image size
+IMG_SIZE = (224, 224)
+BATCH_SIZE = 32
+
+# Rescale images (Normalizing pixel values)
+datagen = ImageDataGenerator(rescale=1./255)
+
+# Load dataset
+train_dir = "/content/drive/MyDrive/dl/train"
+valid_dir = "/content/drive/MyDrive/dl/valid"
+test_dir =  "/content/drive/MyDrive/dl/test"
+
+train_data = datagen.flow_from_directory(train_dir, target_size=IMG_SIZE, batch_size=BATCH_SIZE, class_mode="binary")
+valid_data = datagen.flow_from_directory(valid_dir, target_size=IMG_SIZE, batch_size=BATCH_SIZE, class_mode="binary")
+test_data = datagen.flow_from_directory(test_dir, target_size=IMG_SIZE, batch_size=BATCH_SIZE, class_mode="binary")
+
+import cv2
+import numpy as np
+import os
+from matplotlib import pyplot as plt
+
+def apply_histogram_equalization(image_path):
+    img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+    equalized_img = cv2.equalizeHist(img)
+    return equalized_img
+
+# Test on a sample image
+sample_img_path = "/content/drive/MyDrive/dl/train/images/1-1_jpg.rf.3c35c15f5361d33821647bfd181b0af7.jpg"  # Update with a real image path
+equalized_image = apply_histogram_equalization(sample_img_path)
+
+plt.subplot(1, 2, 1)
+plt.title("Original Image")
+plt.imshow(cv2.imread(sample_img_path, cv2.IMREAD_GRAYSCALE), cmap='gray')
+
+plt.subplot(1, 2, 2)
+plt.title("Equalized Image")
+plt.imshow(equalized_image, cmap='gray')
+
+plt.show()
+
+
+
+import os
+import cv2
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras.layers import Input, Conv2D, Flatten, Dense, Reshape, Conv2DTranspose, Lambda
+from tensorflow.keras.models import Model
+from tensorflow.keras import backend as K
+import matplotlib.pyplot as plt
+
+# Load images
+def load_images(image_dir, target_size=(128, 128)):
+    images = []
+    for img_name in os.listdir(image_dir):
+        img_path = os.path.join(image_dir, img_name)
+        img = cv2.imread(img_path)
+        img = cv2.resize(img, target_size)
+        img = img.astype("float32") / 255.0  # Normalize
+        images.append(img)
+    return np.array(images)
+
+# Example dataset path (Modify accordingly)
+image_dir = "/content/drive/MyDrive/dl/train/images"
+
+images = load_images(image_dir)
+
+# Add artificial noise
+def add_noise(img):
+    noise = np.random.normal(0, 0.1, img.shape)  # Gaussian Noise
+    noisy_img = np.clip(img + noise, 0, 1)  # Keep pixel values in range [0,1]
+    return noisy_img
+
+noisy_images = np.array([add_noise(img) for img in images])
+clean_images = images  # The original images are considered as clean
+
+# Reshape for model input
+clean_images = np.reshape(clean_images, (-1, 128, 128, 3))
+noisy_images = np.reshape(noisy_images, (-1, 128, 128, 3))
+
+# Display example
+plt.subplot(1, 2, 1)
+plt.title("Noisy Image")
+plt.imshow(noisy_images[0])
+
+plt.subplot(1, 2, 2)
+plt.title("Clean Image")
+plt.imshow(clean_images[0])
+
+plt.show
+
+
+
+import tensorflow as tf
+from tensorflow.keras.layers import Input, Conv2D, Flatten, Dense, Lambda, Reshape, Conv2DTranspose, Layer
+from tensorflow.keras.models import Model
+import tensorflow.keras.backend as K
+
+# Latent space dimensions
+latent_dim = 64
+
+# Encoder
+input_img = Input(shape=(128, 128, 3))
+x = Conv2D(32, (3, 3), activation="relu", padding="same")(input_img)
+x = Conv2D(64, (3, 3), activation="relu", padding="same", strides=2)(x)
+x = Flatten()(x)
+z_mean = Dense(latent_dim)(x)
+z_log_var = Dense(latent_dim)(x)
+
+# Sampling function
+def sampling(args):
+    z_mean, z_log_var = args
+    batch = K.shape(z_mean)[0]
+    dim = K.int_shape(z_mean)[1]
+    epsilon = K.random_normal(shape=(batch, dim))
+    return z_mean + K.exp(0.5 * z_log_var) * epsilon
+
+z = Lambda(sampling, output_shape=(latent_dim,))([z_mean, z_log_var])
+
+# Decoder
+decoder_input = Input(shape=(latent_dim,))
+x = Dense(32 * 32 * 64, activation="relu")(decoder_input)
+x = Reshape((32, 32, 64))(x)
+x = Conv2DTranspose(64, (3, 3), activation="relu", padding="same", strides=2)(x)
+x = Conv2DTranspose(32, (3, 3), activation="relu", padding="same", strides=2)(x)
+vae_output = Conv2DTranspose(3, (3, 3), activation="sigmoid", padding="same")(x)
+
+# Define Models
+encoder = Model(input_img, [z_mean, z_log_var, z], name="encoder")
+decoder = Model(decoder_input, vae_output, name="decoder")
+vae_output = decoder(encoder(input_img)[2])
+
+# Custom layer to handle the loss
+class VAELossLayer(Layer):
+    def vae_loss(self, y_true, y_pred, z_mean, z_log_var):
+        # Reconstruction Loss
+        mse = tf.keras.losses.MeanSquaredError()
+        reconstruction_loss = tf.reduce_mean(mse(K.flatten(y_true), K.flatten(y_pred)))
+        reconstruction_loss *= 128 * 128 * 3  # Scale by image size
+
+        # KL Divergence Loss
+        kl_loss = -0.5 * tf.reduce_mean(1 + z_log_var - tf.square(z_mean) - tf.exp(z_log_var))
+
+        return reconstruction_loss + kl_loss
+
+    def call(self, inputs):
+        y_true, y_pred, z_mean, z_log_var = inputs
+        loss = self.vae_loss(y_true, y_pred, z_mean, z_log_var)
+        self.add_loss(loss)
+        return y_pred
+
+# Define VAE model
+vae_output = VAELossLayer()([input_img, vae_output, z_mean, z_log_var])
+vae = Model(input_img, vae_output)
+
+# Compile the model
+vae.compile(optimizer="adam")
+
+# Train the model
+vae.fit(noisy_images, clean_images, epochs=50, batch_size=16)
+
+
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Flatten, Dropout, Conv2D, MaxPooling2D
+
+# Define CNN Model
+model = Sequential([
+    Conv2D(32, (3, 3), activation='relu', input_shape=(224, 224, 3)),
+    MaxPooling2D(2, 2),
+
+    Conv2D(64, (3, 3), activation='relu'),
+    MaxPooling2D(2, 2),
+
+    Conv2D(128, (3, 3), activation='relu'),
+    MaxPooling2D(2, 2),
+
+    Flatten(),
+    Dense(128, activation='relu'),
+    Dropout(0.5),
+    Dense(1, activation='sigmoid')  # Binary classification
+])
+
+# Compile model
+model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+
+# Train the model
+history = model.fit(train_augmented, validation_data=valid_data, epochs=50)
+
+test_loss, test_acc = model.evaluate(test_data)
+print(f"Test Accuracy: {test_acc*100:.2f}%")
+
+from tensorflow.keras.preprocessing import image
+import numpy as np
+
+def predict_image(img_path):
+    img = image.load_img(img_path, target_size=(224, 224))
+    img_array = image.img_to_array(img) / 255.0
+    img_array = np.expand_dims(img_array, axis=0)
+
+    prediction = model.predict(img_array)
+    class_labels = list(train_data.class_indices.keys())
+
+    predicted_class = class_labels[int(prediction[0] > 0.5)]
+    print(f"Predicted class: {predicted_class}")
+
+# Test on a new image
+test_image_path = "/content/drive/MyDrive/dl/test/images/200623160205-05-coronavirus-waste-pollution-super-169_jpg.rf.e06b1a6873ec4240c3493f281822c9d9.jpg"
+predict_image(test_image_path)
+
+import os
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from PIL import Image
+
+# Paths
+original_dataset_path = "/content/drive/MyDrive/dl/train"  # Update with actual path
+augmented_dataset_path = "/content/drive/MyDrive/dl/augmented_dataset"  # Folder for augmented images
+
+# Create the augmented dataset folder if it doesn't exist
+if not os.path.exists(augmented_dataset_path):
+    os.makedirs(augmented_dataset_path)
+
+# Define augmentation transformations
+train_datagen = ImageDataGenerator(
+    rescale=1./255,
+    rotation_range=20,
+    width_shift_range=0.2,
+    height_shift_range=0.2,
+    shear_range=0.2,
+    zoom_range=0.2,
+    horizontal_flip=True,
+    fill_mode='nearest'
+)
+
+# Load images from directory
+train_data = train_datagen.flow_from_directory(
+    original_dataset_path,
+    target_size=(224, 224),
+    batch_size=32,
+    class_mode='binary',
+    shuffle=True
+)
+
+# Get the number of images before augmentation
+num_original_images = train_data.samples  # Directly get from dataset
+
+# Dictionary to store filenames and labels
+augmented_labels = []
+
+# Generate and store augmented images in class-specific folders
+num_augment_per_image = 5  # Number of augmented images per original image
+image_count = 0
+
+for _ in range(num_augment_per_image):
+    augmented_images, labels = next(train_data)  # Get a batch of augmented images and their labels
+
+    for i, img in enumerate(augmented_images):
+        img = (img * 255).astype(np.uint8)  # Convert back to uint8 format
+        img_pil = Image.fromarray(img)  # Convert to PIL Image
+
+        # Get original class label and folder name
+        label = labels[i]
+        class_index = int(label) if train_data.class_mode == "binary" else np.argmax(label)
+        class_name = list(train_data.class_indices.keys())[class_index]
+        class_folder = os.path.join(augmented_dataset_path, class_name)
+
+        # Create class folder if not exists
+        if not os.path.exists(class_folder):
+            os.makedirs(class_folder)
+
+        # Save augmented image inside corresponding class folder
+        image_filename = f"aug_{image_count}.jpeg"
+        save_path = os.path.join(class_folder, image_filename)
+        img_pil.save(save_path, "JPEG")
+
+        # Save label in a corresponding .txt file
+        label_txt_path = os.path.join(class_folder, f"aug_{image_count}.txt")
+        with open(label_txt_path, "w") as label_file:
+            label_file.write(str(class_index))  # Save label as text
+
+        # Store filename and label
+        augmented_labels.append([save_path, class_name, label_txt_path])
+        image_count += 1
+
+# Save labels to CSV file for reference
+labels_df = pd.DataFrame(augmented_labels, columns=["image_path", "class_label", "label_txt_path"])
+labels_df.to_csv(os.path.join(augmented_dataset_path, "augmented_labels.csv"), index=False)
+
+# Estimate the number of images after augmentation
+num_augmented_images = num_original_images * num_augment_per_image
+
+# Display some augmented images
+fig, axes = plt.subplots(2, 3, figsize=(10, 7))
+axes = axes.flatten()
+
+for i, ax in enumerate(axes):
+    img = plt.imread(augmented_labels[i][0])  # Read saved augmented image
+    ax.imshow(img)
+    ax.axis("off")
+
+plt.show()
+
+# Print images count side by side
+print(f"Images Before Augmentation: {num_original_images} | Augmented Images: {num_augmented_images}")
+
+
+import matplotlib.pyplot as plt
+
+# Assuming 'history' is the output from model.fit()
+def plot_training_history(history):
+    plt.figure(figsize=(12, 5))
+
+    # Plot Accuracy
+    plt.subplot(1, 2, 1)
+    plt.plot(history.history['accuracy'], label='Train Accuracy')
+    plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
+    plt.xlabel('Epochs')
+    plt.ylabel('Accuracy')
+    plt.legend()
+    plt.title('Training & Validation Accuracy')
+
+    # Plot Loss
+    plt.subplot(1, 2, 2)
+    plt.plot(history.history['loss'], label='Train Loss')
+    plt.plot(history.history['val_loss'], label='Validation Loss')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.title('Training & Validation Loss')
+
+    plt.show()
+
+# Call the function with your model's history
+plot_training_history(history)
+
+import matplotlib.pyplot as plt
+from sklearn.metrics import roc_curve, auc
+
+# Compute true positive rate (TPR) and false positive rate (FPR)
+fpr, tpr, thresholds = roc_curve(y_true, reconstruction_errors)
+
+# Calculate AUC (Area Under the Curve)
+roc_auc = auc(fpr, tpr)
+
+# Plot ROC Curve
+plt.figure(figsize=(8, 6))
+plt.plot(fpr, tpr, color='blue', lw=2, label='ROC curve (area = %0.2f)' % roc_auc)
+plt.plot([0, 1], [0, 1], color='gray', linestyle='--')  # Random classifier line
+plt.xlim([0.0, 1.0])
+plt.ylim([0.0, 1.05])
+plt.xlabel('False Positive Rate (FPR)')
+plt.ylabel('True Positive Rate (TPR)')
+plt.title('Receiver Operating Characteristic (ROC)')
+plt.legend(loc='lower right')
+plt.show()
+
+# Optionally, you can print AUC score
+print(f"AUC: {roc_auc}")
+
+
+from sklearn.metrics import confusion_matrix, classification_report
+import numpy as np
+
+# Predict reconstructed images
+reconstructed_images = vae.predict(noisy_images)
+
+# Compute reconstruction error (Mean Squared Error per image)
+reconstruction_errors = np.mean(np.square(clean_images - reconstructed_images), axis=(1, 2, 3))
+
+# Set a threshold for classification (tune this as needed)
+threshold = 0.01
+y_pred = (reconstruction_errors > threshold).astype(int)
+
+# True labels (replace with actual labels if available)
+y_true = np.zeros_like(y_pred)  # If all are clean images; change accordingly if mixed
+
+# Print confusion matrix and classification report
+cm = confusion_matrix(y_true, y_pred)
+print("Confusion Matrix:\n", cm)
+
+print("\nClassification Report:\n", classification_report(y_true, y_pred))
+
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.metrics import confusion_matrix
+
+# If you already have y_true and y_pred
+# cm = confusion_matrix(y_true, y_pred)
+
+plt.figure(figsize=(6, 5))
+sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=["Clean", "Anomaly"], yticklabels=["Clean", "Anomaly"])
+plt.xlabel("Predicted Label")
+plt.ylabel("True Label")
+plt.title("Heatmap")
+plt.show()
+
+
